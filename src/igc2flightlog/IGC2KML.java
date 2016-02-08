@@ -25,7 +25,7 @@ public class IGC2KML {
     public static void main(String[] args) {
         
         if(args.length < 1){
-            Logger.getLogger(IGC2KML.class.getName()).log(Level.SEVERE, "Please pass in the input file path as the first argument and the output file path as the second");
+            Logger.getLogger(IGC2KML.class.getName()).log(Level.SEVERE, "Please pass in the input file path as the first argument.");
             System.exit(1);
         }
 
@@ -93,7 +93,7 @@ public class IGC2KML {
             System.exit(1);
         }
         
-        System.out.println("Log File Written!");
+        System.out.println("KML File Written!");
         //exit
         System.exit(0);
     }
@@ -139,7 +139,7 @@ public class IGC2KML {
         //prepare the variables
         String launchDate = "";
         ArrayList<ArrayList> dataPoints = new ArrayList<ArrayList>();
-        ArrayList<String> point;        
+        ArrayList<String> point;    
         //Parse the file into populated objects
         BufferedReader bfr = new BufferedReader(new FileReader(file));           
         String line = bfr.readLine();
@@ -195,6 +195,9 @@ public class IGC2KML {
         String lineCoords = "";
         boolean flightBegun = false;
         boolean flightEnded = false;
+        ArrayList<String> previousPoint = null;
+        
+        //Loop over the data points
         for (ArrayList<String> dp : dataPoints) {          
             airspeed = (int)(Math.round(Integer.parseInt(dp.get(5)) * 0.621371));
             if(airspeed > maxTAS) {
@@ -205,6 +208,18 @@ public class IGC2KML {
             pointAlt = (int)Math.round(tempAlt);
             double lat = getCoordFromString(dp.get(1));
             double lon = getCoordFromString(dp.get(2));
+            int groundSpeed = 0;
+            
+            if(previousPoint != null) {
+                double lat1 = getCoordFromString(previousPoint.get(1));
+                double lon1 = getCoordFromString(previousPoint.get(2));
+                long time1 = Long.parseLong(previousPoint.get(0));
+                long time2 = Long.parseLong(dp.get(0));
+                groundSpeed = getGroundSpeed2(lat1, lon1, lat, lon, time1, time2); 
+                //convert kph to mph
+                groundSpeed = (int)(Math.round(groundSpeed * 0.621371));
+            }
+            previousPoint = dp;
             
             //The linestring
             lineCoords += lon + "," + lat + "," + dp.get(4) + " ";
@@ -240,6 +255,8 @@ public class IGC2KML {
             bfo.newLine();
             bfo.write("<Data name=\"tas\"><displayName>True Air Speed</displayName><value>" + airspeed + " mph</value></Data>");
             bfo.newLine();
+            bfo.write("<Data name=\"gspd\"><displayName>Ground Speed</displayName><value>" + groundSpeed + " mph</value></Data>");
+            bfo.newLine();
             bfo.write("<Data name=\"alt\"><displayName>Altitude</displayName><value>" + pointAlt + " ft</value></Data>");
             bfo.newLine();
             bfo.write("</ExtendedData>");
@@ -271,7 +288,7 @@ public class IGC2KML {
         bfo.write("</Folder>\n");
         lineKml += lineCoords.trim() + "\n</coordinates>\n</LineString>\n</Placemark>\n</Folder>";
         bfo.write(lineKml);
-        System.out.println( "The max airspeed is " + maxTAS + " kph");
+        System.out.println( "The max airspeed is " + maxTAS + " mph");
         /*
         sdf.applyPattern("MM/dd/yyyy kk:mm:ss");
         StringBuilder newLine = new StringBuilder(",");
@@ -294,6 +311,35 @@ public class IGC2KML {
         newLine.append(file.getName());
         return newLine.toString();
         */
+    }
+    
+    private int getGroundSpeed(double lat1, double lon1, double lat2, double lon2, long time1, long time2) {
+        int speed = 0;
+        int R = 6371;
+        double dLat = deg2rad(lat2-lat1);
+        double dLon = deg2rad(lon2-lon1);
+        double a = 
+            Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+            Math.sin(dLon/2) * Math.sin(dLon/2)
+            ; 
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+        double km = R * c; // Distance in km
+        long seconds = time2-time1;
+        double kph = (km/seconds)*60*60;
+        speed = (int)kph;
+        return speed;
+    }
+    
+    private int getGroundSpeed2(double lat1, double lon1, double lat2, double lon2, long time1, long time2) {
+        double km = Haversine.haversine(lat1, lon1, lat2, lon2);                
+        long seconds = time2-time1;
+        double kph = (km/seconds)*60*60;
+        return (int)kph;
+    }
+    
+    private double deg2rad(double deg) {
+        return deg * (Math.PI/180);
     }
     
     /**
